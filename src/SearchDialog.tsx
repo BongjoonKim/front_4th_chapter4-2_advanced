@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import {
   Box,
   Button,
@@ -81,11 +81,22 @@ const TIME_SLOTS = [
 ];
 
 // 캐시 기능이 있는 API 호출 함수를 만듭니다
-const createCachedFetcher = (fetchFn) => {
-  let cache = null;
-  let fetchPromise = null;
+// Axios의 응답 타입을 명시적으로 정의
+interface ApiResponse<T> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: any;
+  config: any;
+}
+
+type FetchFunction = () => Promise<ApiResponse<Lecture[]>>;
+
+const createCachedFetcher = (fetchFn: FetchFunction) => {
+  let cache: ApiResponse<Lecture[]> | null = null;
+  let fetchPromise: Promise<ApiResponse<Lecture[]>> | null = null;
   
-  return () => {
+  return (): Promise<ApiResponse<Lecture[]>> => {
     // 이미 캐시된 결과가 있으면 그것을 반환
     if (cache) {
       console.log('캐시된 데이터 사용', performance.now());
@@ -100,7 +111,7 @@ const createCachedFetcher = (fetchFn) => {
     
     // 새 요청 시작
     console.log('새 API 요청', performance.now());
-    fetchPromise = fetchFn().then(result => {
+    fetchPromise = fetchFn().then((result: ApiResponse<Lecture[]>) => {
       cache = result; // 결과 캐싱
       fetchPromise = null;
       return result;
@@ -124,12 +135,12 @@ const cachedFetchLiberalArts = createCachedFetcher(fetchLiberalArts);
 const fetchAllLectures = async () => {
   console.log('병렬 API 호출 시작', performance.now());
   const promises = [
-    cachedFetchMajors().then((result : Response) => (console.log('API Call 1', performance.now()), result)),
-    cachedFetchLiberalArts().then((result :Response) => (console.log('API Call 2', performance.now()), result)),
-    cachedFetchMajors().then((result :Response) => (console.log('API Call 3', performance.now()), result)),
-    cachedFetchLiberalArts().then((result :Response) => (console.log('API Call 4', performance.now()), result)),
-    cachedFetchMajors().then((result :Response) => (console.log('API Call 5', performance.now()), result)),
-    cachedFetchLiberalArts().then((result :Response) => (console.log('API Call 6', performance.now()), result)),
+    cachedFetchMajors().then((result : ApiResponse<Lecture[]>) => (console.log('API Call 1', performance.now()), result)),
+    cachedFetchLiberalArts().then((result :ApiResponse<Lecture[]>) => (console.log('API Call 2', performance.now()), result)),
+    cachedFetchMajors().then((result :ApiResponse<Lecture[]>) => (console.log('API Call 3', performance.now()), result)),
+    cachedFetchLiberalArts().then((result :ApiResponse<Lecture[]>) => (console.log('API Call 4', performance.now()), result)),
+    cachedFetchMajors().then((result :ApiResponse<Lecture[]>) => (console.log('API Call 5', performance.now()), result)),
+    cachedFetchLiberalArts().then((result :ApiResponse<Lecture[]>) => (console.log('API Call 6', performance.now()), result)),
   ];
   
   return Promise.all(promises);
@@ -138,7 +149,7 @@ const fetchAllLectures = async () => {
 // TODO: 이 컴포넌트에서 불필요한 연산이 발생하지 않도록 다양한 방식으로 시도해주세요.
 const SearchDialog = ({ searchInfo, onClose }: Props) => {
   const { setSchedulesMap } = useScheduleContext();
-
+  
   const loaderWrapperRef = useRef<HTMLDivElement>(null);
   const loaderRef = useRef<HTMLDivElement>(null);
   const [lectures, setLectures] = useState<Lecture[]>([]);
@@ -151,7 +162,37 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
     majors: [],
   });
 
-  const getFilteredLectures = () => {
+  // const getFilteredLectures = () => {
+  //   const { query = '', credits, grades, days, times, majors } = searchOptions;
+  //   return lectures
+  //     .filter(lecture =>
+  //       lecture.title.toLowerCase().includes(query.toLowerCase()) ||
+  //       lecture.id.toLowerCase().includes(query.toLowerCase())
+  //     )
+  //     .filter(lecture => grades.length === 0 || grades.includes(lecture.grade))
+  //     .filter(lecture => majors.length === 0 || majors.includes(lecture.major))
+  //     .filter(lecture => !credits || lecture.credits.startsWith(String(credits)))
+  //     .filter(lecture => {
+  //       if (days.length === 0) {
+  //         return true;
+  //       }
+  //       const schedules = lecture.schedule ? parseSchedule(lecture.schedule) : [];
+  //       return schedules.some(s => days.includes(s.day));
+  //     })
+  //     .filter(lecture => {
+  //       if (times.length === 0) {
+  //         return true;
+  //       }
+  //       const schedules = lecture.schedule ? parseSchedule(lecture.schedule) : [];
+  //       return schedules.some(s => s.range.some(time => times.includes(time)));
+  //     });
+  // }
+
+  // const filteredLectures = getFilteredLectures();
+  
+  // useMemo를 사용하여 검색 옵션이나 강의 데이터가 변경될 때만 필터링 연산 수행
+  const filteredLectures = useMemo(() => {
+    console.log('필터링 연산 실행', performance.now());
     const { query = '', credits, grades, days, times, majors } = searchOptions;
     return lectures
       .filter(lecture =>
@@ -175,12 +216,29 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
         const schedules = lecture.schedule ? parseSchedule(lecture.schedule) : [];
         return schedules.some(s => s.range.some(time => times.includes(time)));
       });
-  }
-
-  const filteredLectures = getFilteredLectures();
-  const lastPage = Math.ceil(filteredLectures.length / PAGE_SIZE);
-  const visibleLectures = filteredLectures.slice(0, page * PAGE_SIZE);
-  const allMajors = [...new Set(lectures.map(lecture => lecture.major))];
+  }, [lectures, searchOptions]);
+  
+  // const lastPage = Math.ceil(filteredLectures.length / PAGE_SIZE);
+  // const visibleLectures = filteredLectures.slice(0, page * PAGE_SIZE);
+  // const allMajors = [...new Set(lectures.map(lecture => lecture.major))];
+  
+  // 페이지 관련 계산도 메모이제이션
+  const lastPage = useMemo(() =>
+      Math.ceil(filteredLectures.length / PAGE_SIZE),
+    [filteredLectures.length]
+  );
+  
+  // 현재 페이지에 보여줄 강의 목록도 메모이제이션
+  const visibleLectures = useMemo(() =>
+      filteredLectures.slice(0, page * PAGE_SIZE),
+    [filteredLectures, page]
+  );
+  
+  // 전공 목록도 메모이제이션
+  const allMajors = useMemo(() =>
+      [...new Set(lectures.map(lecture => lecture.major))],
+    [lectures]
+  );
 
   const changeSearchOption = (field: keyof SearchOption, value: SearchOption[typeof field]) => {
     setPage(1);
