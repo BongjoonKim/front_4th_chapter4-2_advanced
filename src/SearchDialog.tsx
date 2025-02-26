@@ -32,7 +32,7 @@ import {
 import { useScheduleContext } from "./ScheduleContext.tsx";
 import { Lecture } from "./types.ts";
 import { parseSchedule } from "./utils.ts";
-import axios from "axios";
+import axios, {AxiosResponse} from "axios";
 import { DAY_LABELS } from "./constants.ts";
 
 interface Props {
@@ -80,20 +80,60 @@ const TIME_SLOTS = [
   { id: 24, label: "22:35~23:25" },
 ];
 
+// 캐시 기능이 있는 API 호출 함수를 만듭니다
+const createCachedFetcher = (fetchFn) => {
+  let cache = null;
+  let fetchPromise = null;
+  
+  return () => {
+    // 이미 캐시된 결과가 있으면 그것을 반환
+    if (cache) {
+      console.log('캐시된 데이터 사용', performance.now());
+      return Promise.resolve(cache);
+    }
+    
+    // 요청 중인 Promise가 있으면 그것을 반환
+    if (fetchPromise) {
+      console.log('진행 중인 요청 사용', performance.now());
+      return fetchPromise;
+    }
+    
+    // 새 요청 시작
+    console.log('새 API 요청', performance.now());
+    fetchPromise = fetchFn().then(result => {
+      cache = result; // 결과 캐싱
+      fetchPromise = null;
+      return result;
+    });
+    
+    return fetchPromise;
+  };
+};
+
 const PAGE_SIZE = 100;
 
 const fetchMajors = () => axios.get<Lecture[]>('/schedules-majors.json');
 const fetchLiberalArts = () => axios.get<Lecture[]>('/schedules-liberal-arts.json');
 
+// 캐시 적용된 API 호출 함수 생성
+const cachedFetchMajors = createCachedFetcher(fetchMajors);
+const cachedFetchLiberalArts = createCachedFetcher(fetchLiberalArts);
+
+
 // TODO: 이 코드를 개선해서 API 호출을 최소화 해보세요 + Promise.all이 현재 잘못 사용되고 있습니다. 같이 개선해주세요.
-const fetchAllLectures = async () => await Promise.all([
-  (console.log('API Call 1', performance.now()), await fetchMajors()),
-  (console.log('API Call 2', performance.now()), await fetchLiberalArts()),
-  (console.log('API Call 3', performance.now()), await fetchMajors()),
-  (console.log('API Call 4', performance.now()), await fetchLiberalArts()),
-  (console.log('API Call 5', performance.now()), await fetchMajors()),
-  (console.log('API Call 6', performance.now()), await fetchLiberalArts()),
-]);
+const fetchAllLectures = async () => {
+  console.log('병렬 API 호출 시작', performance.now());
+  const promises = [
+    cachedFetchMajors().then((result : Response) => (console.log('API Call 1', performance.now()), result)),
+    cachedFetchLiberalArts().then((result :Response) => (console.log('API Call 2', performance.now()), result)),
+    cachedFetchMajors().then((result :Response) => (console.log('API Call 3', performance.now()), result)),
+    cachedFetchLiberalArts().then((result :Response) => (console.log('API Call 4', performance.now()), result)),
+    cachedFetchMajors().then((result :Response) => (console.log('API Call 5', performance.now()), result)),
+    cachedFetchLiberalArts().then((result :Response) => (console.log('API Call 6', performance.now()), result)),
+  ];
+  
+  return Promise.all(promises);
+};
 
 // TODO: 이 컴포넌트에서 불필요한 연산이 발생하지 않도록 다양한 방식으로 시도해주세요.
 const SearchDialog = ({ searchInfo, onClose }: Props) => {
