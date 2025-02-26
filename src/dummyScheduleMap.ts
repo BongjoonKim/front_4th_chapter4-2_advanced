@@ -1,3 +1,4 @@
+// dummyScheduleMap.ts
 export default {
   "schedule-1": [
     {

@@ -1,4 +1,5 @@
-import {useEffect, useMemo, useRef, useState} from "react";
+// SearchDialog.tsx
+import {memo, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {
   Box,
   Button,
@@ -146,6 +147,85 @@ const fetchAllLectures = async () => {
   return Promise.all(promises);
 };
 
+// 메모이제이션된 TimeSlot 컴포넌트
+interface TimeSlotProps {
+  id: number;
+  label: string;
+  isSelected: boolean;
+  onToggle: (id: number) => void;
+}
+
+const TimeSlotItem = memo(({ id, label, isSelected, onToggle }: TimeSlotProps) => {
+  console.log(`TimeSlotItem ${id} 렌더링`, performance.now());
+  return (
+    <Box key={id}>
+      <Checkbox
+        key={id}
+        size="sm"
+        value={id}
+        isChecked={isSelected}
+        onChange={() => onToggle(id)}
+      >
+        {id}교시({label})
+      </Checkbox>
+    </Box>
+  );
+});
+
+// 메모이제이션된 Major 컴포넌트
+interface MajorItemProps {
+  major: string;
+  isSelected: boolean;
+  onToggle: (major: string) => void;
+}
+
+const MajorItem = memo(({ major, isSelected, onToggle }: MajorItemProps) => {
+  console.log(`MajorItem ${major.substring(0, 10)} 렌더링`, performance.now());
+  return (
+    <Box key={major}>
+      <Checkbox
+        key={major}
+        size="sm"
+        value={major}
+        isChecked={isSelected}
+        onChange={() => onToggle(major)}
+      >
+        {major.replace(/<p>/gi, ' ')}
+      </Checkbox>
+    </Box>
+  );
+});
+
+// 메모이제이션된 강의 행 컴포넌트
+interface LectureRowProps {
+  lecture: Lecture;
+  index: number;
+  onAddSchedule: (lecture: Lecture) => void;
+}
+
+const LectureRow = memo(({ lecture, index, onAddSchedule }: LectureRowProps) => {
+  console.log(`LectureRow ${lecture.id}-${index} 렌더링`, performance.now());
+  return (
+    <Tr key={`${lecture.id}-${index}`}>
+      <Td width="100px">{lecture.id}</Td>
+      <Td width="50px">{lecture.grade}</Td>
+      <Td width="200px">{lecture.title}</Td>
+      <Td width="50px">{lecture.credits}</Td>
+      <Td width="150px" dangerouslySetInnerHTML={{ __html: lecture.major }}/>
+      <Td width="150px" dangerouslySetInnerHTML={{ __html: lecture.schedule }}/>
+      <Td width="80px">
+        <Button
+          size="sm"
+          colorScheme="green"
+          onClick={() => onAddSchedule(lecture)}
+        >
+          추가
+        </Button>
+      </Td>
+    </Tr>
+  );
+});
+
 // TODO: 이 컴포넌트에서 불필요한 연산이 발생하지 않도록 다양한 방식으로 시도해주세요.
 const SearchDialog = ({ searchInfo, onClose }: Props) => {
   const { setSchedulesMap } = useScheduleContext();
@@ -239,30 +319,56 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       [...new Set(lectures.map(lecture => lecture.major))],
     [lectures]
   );
-
-  const changeSearchOption = (field: keyof SearchOption, value: SearchOption[typeof field]) => {
+  
+  // 검색 옵션 변경 함수 메모이제이션
+  const changeSearchOption = useCallback((field: keyof SearchOption, value: SearchOption[typeof field]) => {
     setPage(1);
-    setSearchOptions(({ ...searchOptions, [field]: value }));
+    setSearchOptions(prev => ({ ...prev, [field]: value }));
     loaderWrapperRef.current?.scrollTo(0, 0);
-  };
-
-  const addSchedule = (lecture: Lecture) => {
+  }, []);
+  
+  // 시간 슬롯 토글 함수 메모이제이션
+  const toggleTimeSlot = useCallback((id: number) => {
+    setSearchOptions(prev => {
+      const newTimes = prev.times.includes(id)
+        ? prev.times.filter(t => t !== id)
+        : [...prev.times, id];
+      return { ...prev, times: newTimes };
+    });
+    setPage(1);
+    loaderWrapperRef.current?.scrollTo(0, 0);
+  }, []);
+  
+  // 전공 토글 함수 메모이제이션
+  const toggleMajor = useCallback((major: string) => {
+    setSearchOptions(prev => {
+      const newMajors = prev.majors.includes(major)
+        ? prev.majors.filter(m => m !== major)
+        : [...prev.majors, major];
+      return { ...prev, majors: newMajors };
+    });
+    setPage(1);
+    loaderWrapperRef.current?.scrollTo(0, 0);
+  }, []);
+  
+  // 강의 추가 함수 메모이제이션
+  const addSchedule = useCallback((lecture: Lecture) => {
     if (!searchInfo) return;
-
+    
     const { tableId } = searchInfo;
-
+    
     const schedules = parseSchedule(lecture.schedule).map(schedule => ({
       ...schedule,
       lecture
     }));
-
+    
     setSchedulesMap(prev => ({
       ...prev,
       [tableId]: [...prev[tableId], ...schedules]
     }));
-
+    
     onClose();
-  };
+  }, [searchInfo, setSchedulesMap, onClose]);
 
   useEffect(() => {
     const start = performance.now();
@@ -275,14 +381,15 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
     })
   }, []);
 
+// 무한 스크롤 설정
   useEffect(() => {
     const $loader = loaderRef.current;
     const $loaderWrapper = loaderWrapperRef.current;
-
+    
     if (!$loader || !$loaderWrapper) {
       return;
     }
-
+    
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting) {
@@ -291,9 +398,9 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       },
       { threshold: 0, root: $loaderWrapper }
     );
-
+    
     observer.observe($loader);
-
+    
     return () => observer.unobserve($loader);
   }, [lastPage]);
 
@@ -305,7 +412,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
     }))
     setPage(1);
   }, [searchInfo]);
-
+  
   return (
     <Modal isOpen={Boolean(searchInfo)} onClose={onClose} size="6xl">
       <ModalOverlay/>
@@ -323,7 +430,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                   onChange={(e) => changeSearchOption('query', e.target.value)}
                 />
               </FormControl>
-
+              
               <FormControl>
                 <FormLabel>학점</FormLabel>
                 <Select
@@ -337,7 +444,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                 </Select>
               </FormControl>
             </HStack>
-
+            
             <HStack spacing={4}>
               <FormControl>
                 <FormLabel>학년</FormLabel>
@@ -352,7 +459,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                   </HStack>
                 </CheckboxGroup>
               </FormControl>
-
+              
               <FormControl>
                 <FormLabel>요일</FormLabel>
                 <CheckboxGroup
@@ -367,61 +474,64 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                 </CheckboxGroup>
               </FormControl>
             </HStack>
-
+            
             <HStack spacing={4}>
               <FormControl>
                 <FormLabel>시간</FormLabel>
                 <CheckboxGroup
                   colorScheme="green"
                   value={searchOptions.times}
-                  onChange={(values) => changeSearchOption('times', values.map(Number))}
                 >
                   <Wrap spacing={1} mb={2}>
                     {searchOptions.times.sort((a, b) => a - b).map(time => (
                       <Tag key={time} size="sm" variant="outline" colorScheme="blue">
                         <TagLabel>{time}교시</TagLabel>
                         <TagCloseButton
-                          onClick={() => changeSearchOption('times', searchOptions.times.filter(v => v !== time))}/>
+                          onClick={() => toggleTimeSlot(time)}
+                        />
                       </Tag>
                     ))}
                   </Wrap>
                   <Stack spacing={2} overflowY="auto" h="100px" border="1px solid" borderColor="gray.200"
                          borderRadius={5} p={2}>
                     {TIME_SLOTS.map(({ id, label }) => (
-                      <Box key={id}>
-                        <Checkbox key={id} size="sm" value={id}>
-                          {id}교시({label})
-                        </Checkbox>
-                      </Box>
+                      <TimeSlotItem
+                        key={id}
+                        id={id}
+                        label={label}
+                        isSelected={searchOptions.times.includes(id)}
+                        onToggle={toggleTimeSlot}
+                      />
                     ))}
                   </Stack>
                 </CheckboxGroup>
               </FormControl>
-
+              
               <FormControl>
                 <FormLabel>전공</FormLabel>
                 <CheckboxGroup
                   colorScheme="green"
                   value={searchOptions.majors}
-                  onChange={(values) => changeSearchOption('majors', values as string[])}
                 >
                   <Wrap spacing={1} mb={2}>
                     {searchOptions.majors.map(major => (
                       <Tag key={major} size="sm" variant="outline" colorScheme="blue">
                         <TagLabel>{major.split("<p>").pop()}</TagLabel>
                         <TagCloseButton
-                          onClick={() => changeSearchOption('majors', searchOptions.majors.filter(v => v !== major))}/>
+                          onClick={() => toggleMajor(major)}
+                        />
                       </Tag>
                     ))}
                   </Wrap>
                   <Stack spacing={2} overflowY="auto" h="100px" border="1px solid" borderColor="gray.200"
                          borderRadius={5} p={2}>
                     {allMajors.map(major => (
-                      <Box key={major}>
-                        <Checkbox key={major} size="sm" value={major}>
-                          {major.replace(/<p>/gi, ' ')}
-                        </Checkbox>
-                      </Box>
+                      <MajorItem
+                        key={major}
+                        major={major}
+                        isSelected={searchOptions.majors.includes(major)}
+                        onToggle={toggleMajor}
+                      />
                     ))}
                   </Stack>
                 </CheckboxGroup>
@@ -444,22 +554,17 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                   </Tr>
                 </Thead>
               </Table>
-
+              
               <Box overflowY="auto" maxH="500px" ref={loaderWrapperRef}>
                 <Table size="sm" variant="striped">
                   <Tbody>
                     {visibleLectures.map((lecture, index) => (
-                      <Tr key={`${lecture.id}-${index}`}>
-                        <Td width="100px">{lecture.id}</Td>
-                        <Td width="50px">{lecture.grade}</Td>
-                        <Td width="200px">{lecture.title}</Td>
-                        <Td width="50px">{lecture.credits}</Td>
-                        <Td width="150px" dangerouslySetInnerHTML={{ __html: lecture.major }}/>
-                        <Td width="150px" dangerouslySetInnerHTML={{ __html: lecture.schedule }}/>
-                        <Td width="80px">
-                          <Button size="sm" colorScheme="green" onClick={() => addSchedule(lecture)}>추가</Button>
-                        </Td>
-                      </Tr>
+                      <LectureRow
+                        key={`${lecture.id}-${index}`}
+                        lecture={lecture}
+                        index={index}
+                        onAddSchedule={addSchedule}
+                      />
                     ))}
                   </Tbody>
                 </Table>

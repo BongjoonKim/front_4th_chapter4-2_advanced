@@ -1,3 +1,4 @@
+// types.ts
 export interface Lecture {
   id: string;
   title: string;

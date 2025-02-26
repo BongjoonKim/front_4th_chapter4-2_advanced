@@ -1,3 +1,4 @@
+// utils.ts
 export const fill2 = (n: number) => `0${n}`.substr(-2);
 
 export const parseHnM = (current: number) => {
