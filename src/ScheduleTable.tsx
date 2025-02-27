@@ -231,7 +231,7 @@ const TableGrid = memo(({ onTimeClick }: { onTimeClick: (day: string, time: numb
 });
 
 // 테이블 외부 컨테이너 컴포넌트도 분리
-const TableContainer = memo(({ tableId, isActive, children }: {
+const TableContainer = memo(({ isActive, children }: {
   tableId: string,
   isActive: boolean,
   children: React.ReactNode
